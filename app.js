@@ -56,14 +56,20 @@ async function gistWrite() {
 // On a new device this automatically pulls in all existing data.
 async function connectSync() {
   const token = document.getElementById('sync-token').value.trim();
+  const manualId = document.getElementById('sync-gist-id').value.trim();
   if (!token) return;
   localStorage.setItem('syncToken', token);
   setSyncStatus('syncing');
   try {
-    const gists = await gistRequest('GET', '?per_page=100');
-    const existing = gists.find(g => GIST_FILE in g.files);
-    if (existing) {
-      localStorage.setItem('syncGistId', existing.id);
+    let gistId = manualId;
+    if (!gistId) {
+      // Auto-search the user's gists for an existing timer-data.json
+      const gists = await gistRequest('GET', '?per_page=100');
+      const existing = gists.find(g => GIST_FILE in g.files);
+      gistId = existing ? existing.id : null;
+    }
+    if (gistId) {
+      localStorage.setItem('syncGistId', gistId);
       const data = await gistLoad();
       if (data) {
         state.tags          = data.tags          ?? state.tags;
@@ -83,9 +89,9 @@ async function connectSync() {
     }
     renderSyncUI();
     setSyncStatus('saved');
-  } catch {
+  } catch (e) {
     localStorage.removeItem('syncToken');
-    alert('Could not connect — make sure the token has "gist" scope.');
+    alert('Could not connect — make sure the token has "gist" scope.\n\n' + e.message);
     setSyncStatus('off');
   }
 }
@@ -114,8 +120,18 @@ function setSyncStatus(s) {
 function renderSyncUI() {
   const setup     = document.getElementById('sync-setup');
   const connected = document.getElementById('sync-connected');
-  if (syncToken()) { setup.hidden = true;  connected.hidden = false; }
-  else             { setup.hidden = false; connected.hidden = true; }
+  if (syncToken()) {
+    setup.hidden = false; // keep visible so user can re-enter if needed
+    document.getElementById('sync-token').value = '';
+    document.getElementById('sync-gist-id').value = '';
+    setup.hidden = true;
+    connected.hidden = false;
+    const display = document.getElementById('sync-gist-display');
+    if (display) display.textContent = syncGistId() ? 'Gist ID: ' + syncGistId() : '';
+  } else {
+    setup.hidden = false;
+    connected.hidden = true;
+  }
 }
 
 // ─── STATE ───────────────────────────────────────────────────────────────────

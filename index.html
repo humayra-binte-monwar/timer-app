@@ -21,10 +21,12 @@
         <div id="sync-setup">
           <p class="sync-hint">Paste a GitHub token with <code>gist</code> scope to sync across devices.</p>
           <input id="sync-token" type="password" placeholder="ghp_…" autocomplete="off" />
+          <input id="sync-gist-id" type="text" placeholder="Gist ID (optional)" autocomplete="off" />
           <button id="btn-sync-connect" class="btn primary">Connect</button>
         </div>
         <div id="sync-connected" hidden>
           <div id="sync-status" class="sync-status"></div>
+          <div id="sync-gist-display" class="sync-hint" style="margin-top:4px;word-break:break-all"></div>
           <button id="btn-sync-disconnect" class="btn small">Disconnect</button>
         </div>
       </section>
