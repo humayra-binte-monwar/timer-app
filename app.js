@@ -6,17 +6,24 @@ const syncToken  = () => localStorage.getItem('syncToken')  || '';
 const syncGistId = () => localStorage.getItem('syncGistId') || '';
 
 async function gistRequest(method, path, body) {
-  const res = await fetch('https://api.github.com/gists' + path, {
-    method,
-    headers: {
-      'Authorization': 'token ' + syncToken(),
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) throw new Error('GitHub API ' + res.status);
-  return res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const res = await fetch('https://api.github.com/gists' + path, {
+      method,
+      signal: controller.signal,
+      headers: {
+        'Authorization': 'token ' + syncToken(),
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: body != null ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error('GitHub API ' + res.status);
+    return res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function syncPayload() {
@@ -58,6 +65,9 @@ async function connectSync() {
   const token = document.getElementById('sync-token').value.trim();
   const manualId = document.getElementById('sync-gist-id').value.trim();
   if (!token) return;
+  const btn = document.getElementById('btn-sync-connect');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
   localStorage.setItem('syncToken', token);
   setSyncStatus('syncing');
   try {
@@ -91,8 +101,12 @@ async function connectSync() {
     setSyncStatus('saved');
   } catch (e) {
     localStorage.removeItem('syncToken');
-    alert('Could not connect — make sure the token has "gist" scope.\n\n' + e.message);
+    const msg = e.name === 'AbortError' ? 'Request timed out — check your internet connection.' : e.message;
+    alert('Could not connect:\n' + msg);
     setSyncStatus('off');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Connect';
   }
 }
 
