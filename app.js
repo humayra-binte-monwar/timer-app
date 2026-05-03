@@ -1,104 +1,121 @@
-// ─── FILE STORAGE (IndexedDB stores the file handle; writes go to a real .json on disk) ───
+// ─── GIST SYNC ───────────────────────────────────────────────────────────────
 
-function openIDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('timer-app', 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore('meta');
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror   = e => reject(e.target.error);
+const GIST_FILE = 'timer-data.json';
+
+const syncToken  = () => localStorage.getItem('syncToken')  || '';
+const syncGistId = () => localStorage.getItem('syncGistId') || '';
+
+async function gistRequest(method, path, body) {
+  const res = await fetch('https://api.github.com/gists' + path, {
+    method,
+    headers: {
+      'Authorization': 'token ' + syncToken(),
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: body != null ? JSON.stringify(body) : undefined,
   });
+  if (!res.ok) throw new Error('GitHub API ' + res.status);
+  return res.json();
 }
 
-async function idbGet(key) {
-  const db = await openIDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('meta', 'readonly').objectStore('meta').get(key);
-    req.onsuccess = () => resolve(req.result ?? null);
-    req.onerror   = () => reject(req.error);
-  });
+function syncPayload() {
+  return {
+    tags:          state.tags,
+    sessions:      state.sessions,
+    nextTagId:     state.nextTagId,
+    nextSessionId: state.nextSessionId,
+  };
 }
 
-async function idbSet(key, val) {
-  const db = await openIDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('meta', 'readwrite').objectStore('meta').put(val, key);
-    req.onsuccess = () => resolve();
-    req.onerror   = () => reject(req.error);
-  });
+async function gistLoad() {
+  const gist = await gistRequest('GET', '/' + syncGistId());
+  const raw = gist.files[GIST_FILE]?.content;
+  return raw ? JSON.parse(raw) : null;
 }
 
-let fileHandle = null;
-let filePending = false; // true when we have a handle but are waiting for a user gesture to re-grant
+let _gistTimer = null;
+function scheduleGistWrite() {
+  if (!syncToken()) return;
+  clearTimeout(_gistTimer);
+  _gistTimer = setTimeout(gistWrite, 1500);
+}
 
-// Try to restore a previously-picked file handle from IndexedDB.
-// Returns 'granted', 'prompt', 'denied', 'none', or 'unsupported'.
-async function initFileHandle() {
-  if (!window.showSaveFilePicker) return 'unsupported';
+async function gistWrite() {
+  if (!syncToken() || !syncGistId()) return;
+  setSyncStatus('syncing');
   try {
-    fileHandle = await idbGet('fileHandle');
-    if (!fileHandle) return 'none';
-    return await fileHandle.queryPermission({ mode: 'readwrite' });
-  } catch { fileHandle = null; return 'none'; }
-}
-
-// Called by the "Set save file" button.
-async function pickSaveFile() {
-  if (!window.showSaveFilePicker) {
-    alert('Your browser does not support local file saving.\nUse Chrome or Edge.');
-    return;
-  }
-  try {
-    fileHandle = await window.showSaveFilePicker({
-      suggestedName: 'timer-data.json',
-      types: [{ description: 'Timer Data', accept: { 'application/json': ['.json'] } }],
+    await gistRequest('PATCH', '/' + syncGistId(), {
+      files: { [GIST_FILE]: { content: JSON.stringify(syncPayload(), null, 2) } },
     });
-    await idbSet('fileHandle', fileHandle);
-    await writeFile();          // write current state immediately
-    renderSaveStatus();
-  } catch { /* user cancelled */ }
+    setSyncStatus('saved');
+  } catch { setSyncStatus('error'); }
 }
 
-async function readFile() {
-  if (!fileHandle) return null;
+// Connect: finds an existing timer-data gist or creates a new one.
+// On a new device this automatically pulls in all existing data.
+async function connectSync() {
+  const token = document.getElementById('sync-token').value.trim();
+  if (!token) return;
+  localStorage.setItem('syncToken', token);
+  setSyncStatus('syncing');
   try {
-    const text = await (await fileHandle.getFile()).text();
-    return JSON.parse(text);
-  } catch { return null; }
-}
-
-let _writeTimer = null;
-function scheduleWrite() {
-  clearTimeout(_writeTimer);
-  _writeTimer = setTimeout(writeFile, 800);
-}
-
-async function writeFile() {
-  if (!fileHandle) return;
-  try {
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify({
-      tags:          state.tags,
-      sessions:      state.sessions,
-      nextTagId:     state.nextTagId,
-      nextSessionId: state.nextSessionId,
-    }, null, 2));
-    await writable.close();
-  } catch (e) { console.warn('File write failed:', e); }
-}
-
-function renderSaveStatus() {
-  const el = document.getElementById('save-status');
-  if (!el) return;
-  if (fileHandle) {
-    el.textContent = '💾 ' + fileHandle.name;
-    el.title = 'Data is saving to this file on your PC';
-  } else if (filePending) {
-    el.textContent = '⏳ Click anywhere to enable saving';
-    el.title = 'Click anywhere on the app to re-enable file saving';
-  } else {
-    el.textContent = 'Browser only';
-    el.title = 'Pick a save file to store data on your PC';
+    const gists = await gistRequest('GET', '?per_page=100');
+    const existing = gists.find(g => GIST_FILE in g.files);
+    if (existing) {
+      localStorage.setItem('syncGistId', existing.id);
+      const data = await gistLoad();
+      if (data) {
+        state.tags          = data.tags          ?? state.tags;
+        state.sessions      = data.sessions      ?? state.sessions;
+        state.nextTagId     = data.nextTagId     ?? state.nextTagId;
+        state.nextSessionId = data.nextSessionId ?? state.nextSessionId;
+        save();
+        renderAll();
+      }
+    } else {
+      const gist = await gistRequest('POST', '', {
+        description: 'Timer App Data',
+        public: false,
+        files: { [GIST_FILE]: { content: JSON.stringify(syncPayload(), null, 2) } },
+      });
+      localStorage.setItem('syncGistId', gist.id);
+    }
+    renderSyncUI();
+    setSyncStatus('saved');
+  } catch {
+    localStorage.removeItem('syncToken');
+    alert('Could not connect — make sure the token has "gist" scope.');
+    setSyncStatus('off');
   }
+}
+
+function disconnectSync() {
+  if (!confirm('Disconnect sync? Your data stays in this browser.')) return;
+  localStorage.removeItem('syncToken');
+  localStorage.removeItem('syncGistId');
+  renderSyncUI();
+}
+
+function setSyncStatus(s) {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  const map = {
+    syncing: ['↻ Syncing…',   'syncing'],
+    saved:   ['✓ Synced',     'saved'],
+    error:   ['⚠ Sync error', 'error'],
+    off:     ['',             ''],
+  };
+  const [text, cls] = map[s] || map.off;
+  el.textContent = text;
+  el.className = 'sync-status' + (cls ? ' ' + cls : '');
+}
+
+function renderSyncUI() {
+  const setup     = document.getElementById('sync-setup');
+  const connected = document.getElementById('sync-connected');
+  if (syncToken()) { setup.hidden = true;  connected.hidden = false; }
+  else             { setup.hidden = false; connected.hidden = true; }
 }
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
@@ -132,7 +149,7 @@ function save() {
   localStorage.setItem('sessions',      JSON.stringify(state.sessions));
   localStorage.setItem('nextTagId',     state.nextTagId);
   localStorage.setItem('nextSessionId', state.nextSessionId);
-  scheduleWrite(); // also write to file on disk
+  scheduleGistWrite();
 }
 
 function saveTimer() {
@@ -713,7 +730,8 @@ document.getElementById('tag-name').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('btn-add-tag').click();
 });
 
-document.getElementById('btn-pick-file').addEventListener('click', pickSaveFile);
+document.getElementById('btn-sync-connect').addEventListener('click', connectSync);
+document.getElementById('btn-sync-disconnect').addEventListener('click', disconnectSync);
 
 document.getElementById('btn-stats').addEventListener('click', openStats);
 document.getElementById('btn-close-stats').addEventListener('click', closeStats);
@@ -729,51 +747,24 @@ document.getElementById('stats-modal').addEventListener('click', e => {
   // Cycle to a new theme every 45 seconds
   setInterval(cycleTheme, 45000);
 
-  // Try to recover file handle from a previous session
-  const fileStatus = await initFileHandle();
-
-  if (fileStatus === 'granted') {
-    // Load data from the file — it's the source of truth
-    const data = await readFile();
-    if (data) {
-      state.tags          = data.tags          ?? state.tags;
-      state.sessions      = data.sessions      ?? state.sessions;
-      state.nextTagId     = data.nextTagId     ?? state.nextTagId;
-      state.nextSessionId = data.nextSessionId ?? state.nextSessionId;
-    }
-  } else if (fileStatus !== 'unsupported') {
-    // No permission yet — activate automatically on the user's first click anywhere
-    filePending = true;
-    document.addEventListener('click', async function autoActivate() {
-      document.removeEventListener('click', autoActivate, true);
-      filePending = false;
-      if (fileStatus === 'none') {
-        // First time: show the file picker (writes current state immediately)
-        await pickSaveFile();
-      } else {
-        // Have a saved handle, just need re-grant after fresh browser open
-        try {
-          const result = await fileHandle.requestPermission({ mode: 'readwrite' });
-          if (result !== 'granted') fileHandle = null;
-        } catch { fileHandle = null; }
-        renderSaveStatus();
-        if (fileHandle) {
-          // File may be newer than localStorage — load it as source of truth
-          const data = await readFile();
-          if (data) {
-            state.tags          = data.tags          ?? state.tags;
-            state.sessions      = data.sessions      ?? state.sessions;
-            state.nextTagId     = data.nextTagId     ?? state.nextTagId;
-            state.nextSessionId = data.nextSessionId ?? state.nextSessionId;
-            renderAll();
-          }
-        }
+  // Load from Gist if already connected — it's the source of truth
+  if (syncToken() && syncGistId()) {
+    setSyncStatus('syncing');
+    try {
+      const data = await gistLoad();
+      if (data) {
+        state.tags          = data.tags          ?? state.tags;
+        state.sessions      = data.sessions      ?? state.sessions;
+        state.nextTagId     = data.nextTagId     ?? state.nextTagId;
+        state.nextSessionId = data.nextSessionId ?? state.nextSessionId;
+        save();
       }
-    }, { capture: true, once: true });
+      setSyncStatus('saved');
+    } catch { setSyncStatus('error'); }
   }
 
   renderAll();
-  renderSaveStatus();
+  renderSyncUI();
 
   // Restore mode UI
   const mode = state.timer.mode;

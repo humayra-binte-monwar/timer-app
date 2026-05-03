@@ -227,12 +227,25 @@ input[type="text"], select {
 
 input[type="text"]:focus, select:focus { border-color: var(--accent); }
 
-/* ── SAVE PANEL ── */
-.save-status {
-  margin-top: 8px;
+/* ── SYNC PANEL ── */
+.sync-hint {
   font-size: 11px;
   color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 8px;
 }
+.sync-hint code {
+  font-family: monospace;
+  background: var(--border);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+#sync-setup { display: flex; flex-direction: column; gap: 6px; }
+#sync-connected { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sync-status { font-size: 11px; }
+.sync-status.syncing { color: var(--muted); }
+.sync-status.saved   { color: var(--green); }
+.sync-status.error   { color: var(--accent); }
 
 /* ── ADD TAG FORM ── */
 .add-tag-form {

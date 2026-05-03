@@ -16,10 +16,17 @@
     <!-- SIDEBAR: tags + history -->
     <div class="sidebar">
 
-      <section class="panel save-panel">
-        <h2>Save Location</h2>
-        <button id="btn-pick-file" class="btn primary">Pick file on PC</button>
-        <div id="save-status" class="save-status">Browser only</div>
+      <section class="panel sync-panel">
+        <h2>Sync</h2>
+        <div id="sync-setup">
+          <p class="sync-hint">Paste a GitHub token with <code>gist</code> scope to sync across devices.</p>
+          <input id="sync-token" type="password" placeholder="ghp_…" autocomplete="off" />
+          <button id="btn-sync-connect" class="btn primary">Connect</button>
+        </div>
+        <div id="sync-connected" hidden>
+          <div id="sync-status" class="sync-status"></div>
+          <button id="btn-sync-disconnect" class="btn small">Disconnect</button>
+        </div>
       </section>
 
       <section class="panel tags-panel">
