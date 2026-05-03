@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Timer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cabin+Sketch:wght@400;700&family=Roboto:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app">
+
+    <!-- SIDEBAR: tags + history -->
+    <div class="sidebar">
+
+      <section class="panel save-panel">
+        <h2>Save Location</h2>
+        <button id="btn-pick-file" class="btn primary">Pick file on PC</button>
+        <div id="save-status" class="save-status">Browser only</div>
+      </section>
+
+      <section class="panel tags-panel">
+        <h2>Tags</h2>
+        <div class="add-tag-form">
+          <input id="tag-name" type="text" placeholder="Tag name" maxlength="40" />
+          <select id="tag-parent">
+            <option value="">No parent (top level)</option>
+          </select>
+          <button id="btn-add-tag" class="btn primary">Add Tag</button>
+        </div>
+        <ul class="tag-tree" id="tag-tree"></ul>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-header">
+          <h2>Session History</h2>
+          <button id="btn-stats" class="btn small">Stats</button>
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </section>
+
+    </div>
+
+    <!-- MAIN: timer front and centre -->
+    <section class="timer-panel">
+
+      <div class="mode-toggle">
+        <button id="btn-mode-up"   class="mode-btn active">Count Up</button>
+        <button id="btn-mode-down" class="mode-btn">Countdown</button>
+      </div>
+
+      <div class="countdown-input" id="countdown-input">
+        <label>Set time</label>
+        <div class="countdown-fields">
+          <input id="cd-h" type="number" min="0" max="99" value="0" placeholder="00" />
+          <span class="cd-sep">:</span>
+          <input id="cd-m" type="number" min="0" max="59" value="25" placeholder="00" />
+          <span class="cd-sep">:</span>
+          <input id="cd-s" type="number" min="0" max="59" value="0"  placeholder="00" />
+        </div>
+      </div>
+
+      <div class="tag-selector">
+        <label>Tag</label>
+        <select id="tag-select">
+          <option value="">— select a tag —</option>
+        </select>
+      </div>
+
+      <div class="clock" id="clock">00:00:00</div>
+
+      <div class="controls">
+        <button id="btn-start"  class="btn primary">Start</button>
+        <button id="btn-pause"  class="btn" disabled>Pause</button>
+        <button id="btn-stop"   class="btn danger" disabled>Stop &amp; Save</button>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- STATS MODAL -->
+  <div id="stats-modal" class="stats-modal" hidden>
+    <div class="stats-dialog">
+      <div class="stats-dialog-header">
+        <h2>Statistics</h2>
+        <button id="btn-close-stats" class="btn-close-modal">×</button>
+      </div>
+      <div class="stats-summary" id="stats-summary"></div>
+      <div class="stats-charts">
+        <div class="chart-block">
+          <div class="chart-title">Time by Tag</div>
+          <div class="donut-row">
+            <canvas id="donut-canvas"></canvas>
+            <div id="donut-legend" class="donut-legend"></div>
+          </div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">Daily Activity — last 30 days</div>
+          <div id="bar-canvas-wrap" class="bar-canvas-wrap">
+            <canvas id="bar-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
