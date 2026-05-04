@@ -715,10 +715,11 @@ let _pip = null;
 
 async function openPip() {
   if (!('documentPictureInPicture' in window)) {
-    alert('Picture-in-Picture requires Chrome 116 or newer.');
+    alert('Picture-in-Picture requires Chrome 116 or newer.\n\nYour browser: ' + navigator.userAgent);
     return;
   }
   if (_pip && !_pip.closed) { _pip.focus(); return; }
+  try {
 
   _pip = await window.documentPictureInPicture.requestWindow({ width: 320, height: 175 });
 
@@ -752,6 +753,7 @@ async function openPip() {
   renderPip();
 
   _pip.addEventListener('pagehide', () => { _pip = null; });
+  } catch(e) { alert('Pop-out error: ' + e.message); }
 }
 
 function syncThemeToPip() {
