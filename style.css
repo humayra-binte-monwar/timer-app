@@ -523,7 +523,7 @@ input[type="text"]:focus, select:focus { border-color: var(--accent); }
 .pip-clock {
   font-family: 'Roboto', system-ui, sans-serif;
   font-size: 52px;
-  font-weight: 300;
+  font-weight: 700;
   color: var(--accent);
   line-height: 1;
   letter-spacing: 0.02em;
