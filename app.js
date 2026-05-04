@@ -714,6 +714,7 @@ function closeStats() {
 let _pip = null;
 
 async function openPip() {
+  console.log('pip clicked, api available:', 'documentPictureInPicture' in window);
   if (!('documentPictureInPicture' in window)) {
     alert('Picture-in-Picture requires Chrome 116 or newer.\n\nYour browser: ' + navigator.userAgent);
     return;
