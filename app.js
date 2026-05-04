@@ -297,7 +297,7 @@ function stopTimer(save_ = true) {
   renderAll();
 }
 
-function tickClock() { renderClock(); }
+function tickClock() { renderClock(); renderPip(); }
 
 // ─── FORMAT ──────────────────────────────────────────────────────────────────
 
@@ -353,6 +353,7 @@ function renderTimerControls() {
   btnStart.disabled = running;
   btnPause.disabled = !running;
   btnStop.disabled  = !running && !paused;
+  renderPip();
 }
 
 function renderTagSelect() {
@@ -525,6 +526,7 @@ function cycleTheme() {
   setTimeout(() => {
     currentThemeIdx = (currentThemeIdx + 1) % THEMES.length;
     applyTheme(THEMES[currentThemeIdx]);
+    syncThemeToPip();
     document.body.style.opacity = '1';
   }, 620);
 }
@@ -707,6 +709,87 @@ function closeStats() {
   document.getElementById('stats-modal').setAttribute('hidden', '');
 }
 
+// ─── PICTURE-IN-PICTURE ──────────────────────────────────────────────────────
+
+let _pip = null;
+
+async function openPip() {
+  if (!('documentPictureInPicture' in window)) {
+    alert('Picture-in-Picture requires Chrome 116 or newer.');
+    return;
+  }
+  if (_pip && !_pip.closed) { _pip.focus(); return; }
+
+  _pip = await window.documentPictureInPicture.requestWindow({ width: 320, height: 175 });
+
+  const link = _pip.document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = document.querySelector('link[rel="stylesheet"]').href;
+  _pip.document.head.appendChild(link);
+
+  const fonts = _pip.document.createElement('link');
+  fonts.rel = 'stylesheet';
+  fonts.href = document.querySelector('link[href*="fonts.googleapis"]').href;
+  _pip.document.head.appendChild(fonts);
+
+  _pip.document.body.innerHTML = `
+    <div class="pip-wrap">
+      <div class="pip-tag" id="pip-tag"></div>
+      <div class="pip-clock" id="pip-clock">00:00:00</div>
+      <div class="pip-controls">
+        <button id="pip-start" class="btn primary small">Start</button>
+        <button id="pip-pause" class="btn small" disabled>Pause</button>
+        <button id="pip-stop"  class="btn danger small" disabled>Stop</button>
+      </div>
+    </div>
+  `;
+
+  _pip.document.getElementById('pip-start').addEventListener('click', startTimer);
+  _pip.document.getElementById('pip-pause').addEventListener('click', pauseTimer);
+  _pip.document.getElementById('pip-stop').addEventListener('click', () => stopTimer(true));
+
+  syncThemeToPip();
+  renderPip();
+
+  _pip.addEventListener('pagehide', () => { _pip = null; });
+}
+
+function syncThemeToPip() {
+  if (!_pip || _pip.closed) return;
+  const theme = THEMES[currentThemeIdx];
+  const r = _pip.document.documentElement;
+  r.style.setProperty('--bg',      theme.bg);
+  r.style.setProperty('--surface', theme.surface);
+  r.style.setProperty('--border',  theme.border);
+  r.style.setProperty('--accent',  theme.accent);
+  r.style.setProperty('--text',    theme.text);
+  r.style.setProperty('--muted',   theme.muted);
+  r.style.setProperty('--green',   theme.green);
+}
+
+function renderPip() {
+  if (!_pip || _pip.closed) return;
+  const doc = _pip.document;
+
+  const pipClock = doc.getElementById('pip-clock');
+  if (pipClock) {
+    const main = document.getElementById('clock');
+    pipClock.textContent = main.textContent;
+    pipClock.className = 'pip-clock' + (main.classList.contains('overtime') ? ' overtime' : '');
+  }
+
+  const tagEl = doc.getElementById('pip-tag');
+  if (tagEl) tagEl.textContent = state.timer.tagId ? tagPath(state.timer.tagId) : '';
+
+  const { running, paused } = state.timer;
+  const s = doc.getElementById('pip-start');
+  const p = doc.getElementById('pip-pause');
+  const x = doc.getElementById('pip-stop');
+  if (s) { s.textContent = paused ? 'Resume' : 'Start'; s.disabled = running; }
+  if (p) p.disabled = !running;
+  if (x) x.disabled = !running && !paused;
+}
+
 // ─── EVENT LISTENERS ─────────────────────────────────────────────────────────
 
 function setMode(mode) {
@@ -763,6 +846,7 @@ document.getElementById('tag-name').addEventListener('keydown', e => {
 document.getElementById('btn-sync-connect').addEventListener('click', connectSync);
 document.getElementById('btn-sync-disconnect').addEventListener('click', disconnectSync);
 
+document.getElementById('btn-pip').addEventListener('click', openPip);
 document.getElementById('btn-stats').addEventListener('click', openStats);
 document.getElementById('btn-close-stats').addEventListener('click', closeStats);
 document.getElementById('stats-modal').addEventListener('click', e => {

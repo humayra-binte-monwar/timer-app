@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the app
 
-Open `index.html` directly in a browser — no build step, no server, no dependencies to install. Chrome or Edge required for local file saving (File System Access API).
+Open `index.html` directly in a browser — no build step, no server, no dependencies to install.
 
 ## Architecture
 
@@ -12,18 +12,18 @@ Single-page app using vanilla JS, CSS, and HTML. No framework, no bundler.
 
 - `index.html` — markup only; no inline scripts or styles
 - `style.css` — all styling; uses CSS custom properties defined in `:root`
-- `app.js` — all logic in one file, structured in sections: File Storage → State → Tag Helpers → Timer → Format → Render → Event Listeners → Init
+- `app.js` — all logic in one file, structured in sections: Gist Sync → State → Tag Helpers → Timer → Format → Render → Themes → Event Listeners → Init
 
 ### Storage: two-layer system
 
 Persistent data (tags, sessions) uses **two layers in parallel**:
 
-1. `localStorage` — synchronous, written immediately on every `save()` call
-2. A user-picked `.json` file on disk — written via the File System Access API, debounced 800ms via `scheduleWrite()` → `writeFile()`
+1. `localStorage` — synchronous, written immediately on every `save()` call; also acts as fallback when Gist sync is not configured
+2. **GitHub Gist** — written via the GitHub API, debounced 1500ms via `scheduleGistWrite()` → `gistWrite()`; requires a GitHub token with `gist` scope stored in `localStorage` as `syncToken`, plus a Gist ID stored as `syncGistId`
 
-The file handle is persisted across sessions in **IndexedDB** (key `fileHandle`). On startup, `initFileHandle()` recovers the handle and may prompt the user to re-grant write permission (browser security requirement after a fresh open). If no file handle exists, the app runs on localStorage only.
+On `connectSync()`, the app auto-searches the user's gists for an existing `timer-data.json` file, or creates a new private gist. The Gist ID is shown in the UI after connecting so it can be entered manually on other devices to link the same gist.
 
-Timer state (running/paused/elapsed) is persisted separately via `saveTimer()` to `localStorage` only — it is intentionally not written to the JSON file.
+Timer state (running/paused/elapsed) is persisted separately via `saveTimer()` to `localStorage` only — it is intentionally not synced to the Gist.
 
 ### Timer persistence across reloads and crashes
 
@@ -61,7 +61,11 @@ Both charts call `setupCanvas()` to handle device pixel ratio scaling. The modal
 
 ### Startup data priority
 
-On init, if a file handle is recovered **and** the file is readable, its data overwrites what was loaded from `localStorage` — the file is treated as the source of truth. `localStorage` is the fallback when no file handle exists.
+On init, if `syncToken` and `syncGistId` are set in `localStorage`, the Gist is fetched and its data overwrites what was loaded from `localStorage` — the Gist is treated as the source of truth. `localStorage` is the fallback when sync is not configured.
+
+### Themes
+
+Eight hardcoded colour palettes in `THEMES[]`. `applyTheme()` sets CSS custom properties (`--bg`, `--surface`, `--border`, `--accent`, `--text`, `--muted`, `--green`) on `:root`. On init the first theme is applied immediately, then `cycleTheme()` is called on a 45-second interval — it fades the body to opacity 0, swaps the palette, then fades back in.
 
 ### XSS prevention
 
