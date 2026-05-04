@@ -265,7 +265,6 @@ function startTimer() {
   state.timer.interval = setInterval(tickClock, 100);
   saveTimer();
   renderTimerControls();
-  openPip();
 }
 
 function pauseTimer() {
@@ -824,7 +823,7 @@ document.getElementById('btn-mode-down').addEventListener('click', () => setMode
   });
 });
 
-document.getElementById('btn-start').addEventListener('click', startTimer);
+document.getElementById('btn-start').addEventListener('click', () => { startTimer(); openPip(); });
 document.getElementById('btn-pause').addEventListener('click', pauseTimer);
 document.getElementById('btn-stop').addEventListener('click', () => stopTimer(true));
 
