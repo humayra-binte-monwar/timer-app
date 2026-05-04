@@ -265,6 +265,7 @@ function startTimer() {
   state.timer.interval = setInterval(tickClock, 100);
   saveTimer();
   renderTimerControls();
+  openPip();
 }
 
 function pauseTimer() {
@@ -714,8 +715,7 @@ function closeStats() {
 let _pip = null;
 
 async function openPip() {
-  console.log('pip clicked, api available:', 'documentPictureInPicture' in window);
-  if (!('documentPictureInPicture' in window)) {
+if (!('documentPictureInPicture' in window)) {
     alert('Picture-in-Picture requires Chrome 116 or newer.\n\nYour browser: ' + navigator.userAgent);
     return;
   }
@@ -849,7 +849,6 @@ document.getElementById('tag-name').addEventListener('keydown', e => {
 document.getElementById('btn-sync-connect').addEventListener('click', connectSync);
 document.getElementById('btn-sync-disconnect').addEventListener('click', disconnectSync);
 
-document.getElementById('btn-pip').addEventListener('click', openPip);
 document.getElementById('btn-stats').addEventListener('click', openStats);
 document.getElementById('btn-close-stats').addEventListener('click', closeStats);
 document.getElementById('stats-modal').addEventListener('click', e => {

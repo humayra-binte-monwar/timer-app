@@ -498,20 +498,6 @@ input[type="text"]:focus, select:focus { border-color: var(--accent); }
 /* ── BAR CHART ── */
 .bar-canvas-wrap { width: 100%; }
 
-/* ── POP-OUT BUTTON ── */
-.btn-pip {
-  margin-top: 16px;
-  color: var(--muted);
-  border-color: transparent;
-  font-size: 11px;
-  letter-spacing: 0.03em;
-}
-.btn-pip:hover:not(:disabled) {
-  background: transparent;
-  color: var(--text);
-  border-color: var(--border);
-}
-
 /* ── PiP WINDOW ── */
 .pip-wrap {
   height: 100vh;
@@ -535,9 +521,9 @@ input[type="text"]:focus, select:focus { border-color: var(--accent); }
   min-height: 14px;
 }
 .pip-clock {
-  font-family: 'Cabin Sketch', cursive;
-  font-size: 56px;
-  font-weight: 700;
+  font-family: 'Roboto', system-ui, sans-serif;
+  font-size: 52px;
+  font-weight: 300;
   color: var(--accent);
   line-height: 1;
   letter-spacing: 0.02em;
