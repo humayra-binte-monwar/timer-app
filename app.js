@@ -2,8 +2,17 @@
 
 const GIST_FILE = 'timer-data.json';
 
-const syncToken  = () => localStorage.getItem('syncToken')  || '';
-const syncGistId = () => localStorage.getItem('syncGistId') || '';
+const syncToken  = () => localStorage.getItem('syncToken')  || sessionStorage.getItem('syncToken')  || '';
+const syncGistId = () => localStorage.getItem('syncGistId') || sessionStorage.getItem('syncGistId') || '';
+
+function saveSyncCredentials(token, gistId) {
+  if (token  !== undefined) { localStorage.setItem('syncToken',  token);  sessionStorage.setItem('syncToken',  token); }
+  if (gistId !== undefined) { localStorage.setItem('syncGistId', gistId); sessionStorage.setItem('syncGistId', gistId); }
+}
+
+function clearSyncCredentials() {
+  ['syncToken','syncGistId'].forEach(k => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
+}
 
 async function gistRequest(method, path, body) {
   const controller = new AbortController();
@@ -68,7 +77,7 @@ async function connectSync() {
   const btn = document.getElementById('btn-sync-connect');
   btn.disabled = true;
   btn.textContent = 'Connecting…';
-  localStorage.setItem('syncToken', token);
+  saveSyncCredentials(token, undefined);
   setSyncStatus('syncing');
   try {
     let gistId = manualId;
@@ -79,7 +88,7 @@ async function connectSync() {
       gistId = existing ? existing.id : null;
     }
     if (gistId) {
-      localStorage.setItem('syncGistId', gistId);
+      saveSyncCredentials(undefined, gistId);
       const data = await gistLoad();
       if (data) {
         state.tags          = data.tags          ?? state.tags;
@@ -95,12 +104,12 @@ async function connectSync() {
         public: false,
         files: { [GIST_FILE]: { content: JSON.stringify(syncPayload(), null, 2) } },
       });
-      localStorage.setItem('syncGistId', gist.id);
+      saveSyncCredentials(undefined, gist.id);
     }
     renderSyncUI();
     setSyncStatus('saved');
   } catch (e) {
-    localStorage.removeItem('syncToken');
+    clearSyncCredentials();
     const msg = e.name === 'AbortError' ? 'Request timed out — check your internet connection.' : e.message;
     alert('Could not connect:\n' + msg);
     setSyncStatus('off');
@@ -112,8 +121,7 @@ async function connectSync() {
 
 function disconnectSync() {
   if (!confirm('Disconnect sync? Your data stays in this browser.')) return;
-  localStorage.removeItem('syncToken');
-  localStorage.removeItem('syncGistId');
+  clearSyncCredentials();
   renderSyncUI();
 }
 
@@ -713,27 +721,28 @@ function closeStats() {
 
 let _pip = null;
 
-async function openPip() {
-if (!('documentPictureInPicture' in window)) {
-    alert('Picture-in-Picture requires Chrome 116 or newer.\n\nYour browser: ' + navigator.userAgent);
-    return;
-  }
+function openPip() {
   if (_pip && !_pip.closed) { _pip.focus(); return; }
-  try {
 
-  _pip = await window.documentPictureInPicture.requestWindow({ width: 320, height: 175 });
+  const w = 300, h = 160;
+  const left = Math.max(0, window.screen.availWidth  - w - 16);
+  const top  = Math.max(0, window.screen.availHeight - h - 60);
 
-  const link = _pip.document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = document.querySelector('link[href*="style.css"]').href;
-  _pip.document.head.appendChild(link);
+  _pip = window.open(
+    '', 'timer-pip',
+    `width=${w},height=${h},left=${left},top=${top},` +
+    'resizable=no,toolbar=no,menubar=no,location=no,status=no,scrollbars=no'
+  );
+  if (!_pip) return;
 
-  const fonts = _pip.document.createElement('link');
-  fonts.rel = 'stylesheet';
-  fonts.href = document.querySelector('link[href*="fonts.googleapis"]').href;
-  _pip.document.head.appendChild(fonts);
+  const styleHref = document.querySelector('link[href*="style.css"]').href;
+  const fontsHref = document.querySelector('link[href*="fonts.googleapis"]').href;
 
-  _pip.document.body.innerHTML = `
+  _pip.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="${styleHref}">
+    <link rel="stylesheet" href="${fontsHref}">
+  </head><body>
     <div class="pip-wrap">
       <div class="pip-tag" id="pip-tag"></div>
       <div class="pip-clock" id="pip-clock">00:00:00</div>
@@ -743,7 +752,8 @@ if (!('documentPictureInPicture' in window)) {
         <button id="pip-stop"  class="btn danger small" disabled>Stop</button>
       </div>
     </div>
-  `;
+  </body></html>`);
+  _pip.document.close();
 
   _pip.document.getElementById('pip-start').addEventListener('click', startTimer);
   _pip.document.getElementById('pip-pause').addEventListener('click', pauseTimer);
@@ -752,8 +762,7 @@ if (!('documentPictureInPicture' in window)) {
   syncThemeToPip();
   renderPip();
 
-  _pip.addEventListener('pagehide', () => { _pip = null; });
-  } catch(e) { alert('Pop-out error: ' + e.message); }
+  _pip.addEventListener('beforeunload', () => { _pip = null; });
 }
 
 function syncThemeToPip() {
