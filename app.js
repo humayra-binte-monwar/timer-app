@@ -724,7 +724,7 @@ async function openPip() {
 
   const link = _pip.document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = document.querySelector('link[rel="stylesheet"]').href;
+  link.href = document.querySelector('link[href*="style.css"]').href;
   _pip.document.head.appendChild(link);
 
   const fonts = _pip.document.createElement('link');
