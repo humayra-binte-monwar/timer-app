@@ -731,7 +731,7 @@ async function openPip() {
     try {
       _pip = await window.documentPictureInPicture.requestWindow({ width: w, height: h });
       _pip.addEventListener('pagehide', () => { _pip = null; });
-    } catch { _pip = null; }
+    } catch (e) { console.error('Document PiP failed:', e); _pip = null; }
   }
 
   // Fallback: regular popup (does not stay on top)
