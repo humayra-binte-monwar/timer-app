@@ -129,6 +129,7 @@ h2 {
   font-size: 28px;
   font-weight: 700;
   padding: 6px 4px;
+  appearance: textfield;
   -moz-appearance: textfield;
 }
 
