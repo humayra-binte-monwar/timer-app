@@ -21,6 +21,8 @@ Persistent data (tags, sessions) uses **two layers in parallel**:
 1. `localStorage` — synchronous, written immediately on every `save()` call; also acts as fallback when Gist sync is not configured
 2. **GitHub Gist** — written via the GitHub API, debounced 1500ms via `scheduleGistWrite()` → `gistWrite()`; requires a GitHub token with `gist` scope stored in `localStorage` as `syncToken`, plus a Gist ID stored as `syncGistId`
 
+Sync credentials are read from `sessionStorage` first, then `localStorage` as fallback — this allows temporary sessions without persisting the token to disk. `saveSyncCredentials()` writes to both; `clearSyncCredentials()` removes from both.
+
 On `connectSync()`, the app auto-searches the user's gists for an existing `timer-data.json` file, or creates a new private gist. The Gist ID is shown in the UI after connecting so it can be entered manually on other devices to link the same gist.
 
 Timer state (running/paused/elapsed) is persisted separately via `saveTimer()` to `localStorage` only — it is intentionally not synced to the Gist.

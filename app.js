@@ -721,19 +721,31 @@ function closeStats() {
 
 let _pip = null;
 
-function openPip() {
+async function openPip() {
   if (_pip && !_pip.closed) { _pip.focus(); return; }
 
   const w = 300, h = 160;
-  const left = Math.max(0, window.screen.availWidth  - w - 16);
-  const top  = Math.max(0, window.screen.availHeight - h - 60);
 
-  _pip = window.open(
-    '', 'timer-pip',
-    `width=${w},height=${h},left=${left},top=${top},` +
-    'resizable=no,toolbar=no,menubar=no,location=no,status=no,scrollbars=no'
-  );
-  if (!_pip) return;
+  // Document PiP API: floating window that stays on top of all other OS windows
+  if (window.documentPictureInPicture) {
+    try {
+      _pip = await window.documentPictureInPicture.requestWindow({ width: w, height: h });
+      _pip.addEventListener('pagehide', () => { _pip = null; });
+    } catch { _pip = null; }
+  }
+
+  // Fallback: regular popup (does not stay on top)
+  if (!_pip) {
+    const left = Math.max(0, window.screen.availWidth  - w - 16);
+    const top  = Math.max(0, window.screen.availHeight - h - 60);
+    _pip = window.open(
+      '', 'timer-pip',
+      `width=${w},height=${h},left=${left},top=${top},` +
+      'resizable=no,toolbar=no,menubar=no,location=no,status=no,scrollbars=no'
+    );
+    if (!_pip) return;
+    _pip.addEventListener('beforeunload', () => { _pip = null; });
+  }
 
   const styleHref = document.querySelector('link[href*="style.css"]').href;
   const fontsHref = document.querySelector('link[href*="fonts.googleapis"]').href;
@@ -761,8 +773,6 @@ function openPip() {
 
   syncThemeToPip();
   renderPip();
-
-  _pip.addEventListener('beforeunload', () => { _pip = null; });
 }
 
 function syncThemeToPip() {
