@@ -61,7 +61,9 @@ Opened via the "View Statistics" button in the Stats panel. Renders entirely on 
 - **Donut chart** (`drawDonut`) — time by tag, with a legend showing path, formatted duration, and percentage
 - **Stacked bar chart** (`drawBars`) — calendar activity with a Week / Month / Year toggle (`statsView` + `setStatsView`). `statsBuckets(view)` buckets sessions into the current calendar week (Mon-start, 7 bars), month (one bar per day), or year (12 monthly bars); each bar is stacked into per-tag segments. Y-axis snaps to whole hours.
 
-Tag colours are shared across both charts via `tagColorMap()`, which sorts tags by total duration descending and maps each to a `CHART_COLORS` entry — so a tag is the same colour in the donut, its legend, and every stacked bar segment.
+- **Yearly tag grids** (`drawTagGrids`) — a GitHub-style heatmap per tag for the current calendar year, built from DOM cells (CSS Grid, `grid-auto-flow: column`, 7 rows). Each cell is one day, filled with the tag's colour at an opacity stepped by daily hours (`gridLevel` → `GRID_OPACITY`: <2, 2-4, 4-6, 6-8, >8). Leading blank cells align Jan 1 to its weekday row.
+
+Tag colours are shared across all three via `tagColorMap()`, which sorts tags by total duration descending and maps each to a `CHART_COLORS` entry — so a tag is the same colour in the donut, its legend, every stacked bar segment, and its yearly grid.
 
 Both charts call `setupCanvas()` to handle device pixel ratio scaling. The modal closes on backdrop click or the × button.
 

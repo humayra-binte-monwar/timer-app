@@ -533,6 +533,66 @@ input[type="text"]:focus, select:focus { border-color: var(--accent); }
   color: var(--bg);
 }
 
+/* ── YEARLY TAG GRIDS (GitHub-style heatmap) ── */
+.tag-grids {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.tag-grid-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tag-grid-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text);
+  min-width: 0;
+}
+.tag-grid-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tag-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 10px);
+  grid-auto-columns: 10px;
+  gap: 2px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.grid-cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.grid-cell.empty { background: transparent; }
+
+.grid-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.gl-item { display: flex; align-items: center; gap: 3px; }
+.gl-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--accent);
+  display: inline-block;
+}
+
 /* ── PiP WINDOW ── */
 .pip-wrap {
   height: 100vh;

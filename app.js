@@ -745,6 +745,97 @@ function setStatsView(view) {
   drawBars();
 }
 
+// GitHub-style per-tag yearly heatmap. Each cell is one day of the current
+// calendar year, filled with the tag's colour at an opacity stepped by how
+// many hours were logged that day: <2, 2-4, 4-6, 6-8, >8.
+const GRID_OPACITY = [0, 0.2, 0.4, 0.6, 0.8, 1.0];
+
+function gridLevel(hours) {
+  if (hours <= 0) return 0;
+  if (hours < 2) return 1;
+  if (hours < 4) return 2;
+  if (hours < 6) return 3;
+  if (hours < 8) return 4;
+  return 5;
+}
+
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function dayKey(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }
+
+function drawTagGrids() {
+  const container = document.getElementById('tag-grids');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const colorMap = tagColorMap();
+  const year = new Date().getFullYear();
+
+  // tagId → { dayKey: seconds } and tagId → total, for this year only
+  const perTag = {};
+  const totals = {};
+  state.sessions.forEach(s => {
+    const d = new Date(s.date);
+    if (d.getFullYear() !== year) return;
+    const key = dayKey(d);
+    const days = perTag[s.tagId] || (perTag[s.tagId] = {});
+    days[key] = (days[key] || 0) + s.duration;
+    totals[s.tagId] = (totals[s.tagId] || 0) + s.duration;
+  });
+
+  const tagIds = Object.keys(totals).sort((a, b) => totals[b] - totals[a]); // same order as colours
+  if (tagIds.length === 0) {
+    container.innerHTML = '<div class="no-history">No sessions this year.</div>';
+    return;
+  }
+
+  const jan1 = new Date(year, 0, 1);
+  const dec31 = new Date(year, 11, 31);
+  const offset = jan1.getDay(); // leading blanks so Jan 1 lands on its weekday row (Sun=0)
+
+  tagIds.forEach(id => {
+    const color = colorMap[id];
+    const [r, g, b] = hexToRgb(color);
+    const path = getTag(parseInt(id)) ? tagPath(parseInt(id)) : `[deleted #${id}]`;
+    const days = perTag[id] || {};
+
+    const block = document.createElement('div');
+    block.className = 'tag-grid-block';
+
+    const head = document.createElement('div');
+    head.className = 'tag-grid-head';
+    head.innerHTML = `<span class="legend-dot" style="background:${color}"></span>` +
+      `<span class="tag-grid-label">${escHtml(path)}</span>`;
+    block.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'tag-grid';
+
+    for (let i = 0; i < offset; i++) {
+      const c = document.createElement('div');
+      c.className = 'grid-cell empty';
+      grid.appendChild(c);
+    }
+
+    for (const cur = new Date(jan1); cur <= dec31; cur.setDate(cur.getDate() + 1)) {
+      const secs = days[dayKey(cur)] || 0;
+      const level = gridLevel(secs / 3600);
+      const c = document.createElement('div');
+      c.className = 'grid-cell';
+      if (level > 0) c.style.background = `rgba(${r},${g},${b},${GRID_OPACITY[level]})`;
+      const label = cur.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      c.title = `${label}: ${secs > 0 ? fmt(secs) : '0:00:00'}`;
+      grid.appendChild(c);
+    }
+
+    block.appendChild(grid);
+    container.appendChild(block);
+  });
+}
+
 function renderStats() {
   const total = state.sessions.reduce((a, s) => a + s.duration, 0);
   const tagCount = new Set(state.sessions.map(s => s.tagId)).size;
@@ -755,6 +846,7 @@ function renderStats() {
   `;
   drawDonut();
   drawBars();
+  drawTagGrids();
 }
 
 function openStats() {
