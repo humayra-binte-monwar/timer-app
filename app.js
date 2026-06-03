@@ -488,32 +488,17 @@ const CHART_COLORS = [
   '#4e79a7','#75a1c7','#a0cbe8','#499894','#69aaa5',
   '#86bcb6','#59a14f','#72b966','#8cd17d','#b6992d',
   '#d3b348','#f1ce63','#f28e2b','#f9a655','#ffbe7d',
-  '#b07aaa','#c290b4','#d4a6c8','#d37295','#e799b3',
+  '#b07aa1','#c290b4','#d4a6c8','#d37295','#e799b3',
   '#fabfd2','#e15759','#f17b79','#ff9d9a',
 ];
 
 // ─── THEMES ──────────────────────────────────────────────────────────────────
 
-const THEMES = [
-  // Warm cream + coral red
-  { bg:'#E8DBB3', surface:'#F0E4C2', border:'#C9B888', accent:'#e15759', text:'#2C1A0E', muted:'#8B6F47', green:'#5A7A3A' },
-  // Soft blue + navy
-  { bg:'#D3E6F5', surface:'#E2EFF9', border:'#A5CAEB', accent:'#4e79a7', text:'#0D1D2C', muted:'#476A8A', green:'#2A6A58' },
-  // Mint + teal
-  { bg:'#C7DEDA', surface:'#D7EDEA', border:'#89BFBB', accent:'#499894', text:'#0A1C1A', muted:'#387870', green:'#2A6848' },
-  // Sage + forest green
-  { bg:'#CDDECF', surface:'#DDEEDF', border:'#9BBFA2', accent:'#59a14f', text:'#0A1C0C', muted:'#3A6A38', green:'#2A5A2A' },
-  // Warm yellow + amber
-  { bg:'#EDE3B2', surface:'#F5EDC6', border:'#D7C872', accent:'#b6992d', text:'#1C160A', muted:'#896E2E', green:'#4A7A2A' },
-  // Soft lavender + purple
-  { bg:'#DDD1E8', surface:'#EAE0F3', border:'#BEA6CF', accent:'#b07aaa', text:'#1E0D22', muted:'#784A7A', green:'#4A6A5A' },
-  // Blush + rose
-  { bg:'#EED2DC', surface:'#F6E2EC', border:'#D2A6B8', accent:'#d37295', text:'#1C0C14', muted:'#884862', green:'#4A6844' },
-  // Peach + orange
-  { bg:'#F0DBC8', surface:'#F8EBD8', border:'#D8B88E', accent:'#f28e2b', text:'#1C100A', muted:'#886028', green:'#4A7838' },
-];
-
-let currentThemeIdx = 0;
+// Single dark theme, tuned to sit beneath the categorical chart palette above
+const THEME = {
+  bg:'#2A2218', surface:'#332A1E', border:'#463A28',
+  accent:'#C19A6B', text:'#D0CCC3', muted:'#8C867A', green:'#72b966',
+};
 
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -528,16 +513,6 @@ function applyTheme(theme) {
   r.style.setProperty('--text',    theme.text);
   r.style.setProperty('--muted',   theme.muted);
   r.style.setProperty('--green',   theme.green);
-}
-
-function cycleTheme() {
-  document.body.style.opacity = '0';
-  setTimeout(() => {
-    currentThemeIdx = (currentThemeIdx + 1) % THEMES.length;
-    applyTheme(THEMES[currentThemeIdx]);
-    syncThemeToPip();
-    document.body.style.opacity = '1';
-  }, 620);
 }
 
 function setupCanvas(canvas, cssW, cssH) {
@@ -778,7 +753,7 @@ async function openPip() {
 
 function syncThemeToPip() {
   if (!_pip || _pip.closed) return;
-  const theme = THEMES[currentThemeIdx];
+  const theme = THEME;
   const r = _pip.document.documentElement;
   r.style.setProperty('--bg',      theme.bg);
   r.style.setProperty('--surface', theme.surface);
@@ -877,10 +852,8 @@ document.getElementById('stats-modal').addEventListener('click', e => {
 // ─── INIT ────────────────────────────────────────────────────────────────────
 
 (async function init() {
-  // Apply initial theme immediately
-  applyTheme(THEMES[currentThemeIdx]);
-  // Cycle to a new theme every 45 seconds
-  setInterval(cycleTheme, 45000);
+  // Apply the dark theme
+  applyTheme(THEME);
 
   // Load from Gist if already connected — it's the source of truth
   if (syncToken() && syncGistId()) {

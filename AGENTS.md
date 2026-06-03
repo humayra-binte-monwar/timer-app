@@ -67,7 +67,7 @@ On init, if `syncToken` and `syncGistId` are set in `localStorage`, the Gist is 
 
 ### Themes
 
-Eight hardcoded colour palettes in `THEMES[]`. `applyTheme()` sets CSS custom properties (`--bg`, `--surface`, `--border`, `--accent`, `--text`, `--muted`, `--green`) on `:root`. On init the first theme is applied immediately, then `cycleTheme()` is called on a 45-second interval — it fades the body to opacity 0, swaps the palette, then fades back in.
+A single dark theme in `THEME`. `applyTheme()` sets CSS custom properties (`--bg`, `--surface`, `--border`, `--accent`, `--text`, `--muted`, `--green`) on `:root`; it's applied once on init. The palette is tuned to sit beneath the categorical chart colours in `CHART_COLORS` (the Tableau-style palette used for the per-tag donut/legend in the stats modal). `:root` in `style.css` carries the same dark values so there's no light-theme flash before JS runs.
 
 ### XSS prevention
 

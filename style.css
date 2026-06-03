@@ -1,13 +1,13 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #E8DBB3;
-  --surface:  #F0E4C2;
-  --border:   #C9B888;
-  --accent:   #e15759;
-  --text:     #2C1A0E;
-  --muted:    #8B6F47;
-  --green:    #5A7A3A;
+  --bg:       #2A2218;
+  --surface:  #332A1E;
+  --border:   #463A28;
+  --accent:   #C19A6B;
+  --text:     #D0CCC3;
+  --muted:    #8C867A;
+  --green:    #72b966;
 }
 
 body {
@@ -95,7 +95,7 @@ h2 {
 
 .mode-btn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--bg);
 }
 
 /* ── COUNTDOWN INPUT ── */
@@ -202,7 +202,7 @@ h2 {
 .btn.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--bg);
 }
 .btn.primary:hover:not(:disabled) { filter: brightness(1.1); }
 
