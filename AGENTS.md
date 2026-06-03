@@ -1,12 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Running the app
 
-**Preferred:** Double-click `start.bat` — starts a local server via `npx serve` and opens `http://localhost:5000` automatically. Required for the Picture-in-Picture feature (Document PiP API is blocked on `file://` URLs).
-
-**Simple:** Open `index.html` directly in a browser — works for everything except PiP always-on-top.
+Open `index.html` directly in a browser — no build step, no server, no dependencies to install.
 
 ## Architecture
 
