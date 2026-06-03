@@ -427,6 +427,7 @@ function renderTagTree() {
 
 function renderHistory() {
   const container = document.getElementById('history-list');
+  if (!container) return;
   if (state.sessions.length === 0) {
     container.innerHTML = '<div class="no-history">No sessions yet. Start a timer!</div>';
     return;

@@ -77,4 +77,4 @@ All user-supplied strings (tag names, dates) rendered into `innerHTML` are passe
 
 ### Fonts
 
-Loaded from Google Fonts — requires internet connection to render correctly. `Cabin Sketch` is used for the clock, countdown inputs, and `h2` headings; `Roboto` for all other text.
+Loaded from Google Fonts — requires internet connection to render correctly. `Inter` is used for the clock, countdown inputs, and `h2` headings; `Roboto` for all other text.

@@ -59,7 +59,7 @@ body {
 .panel:last-child { border-bottom: none; }
 
 h2 {
-  font-family: 'Cabin Sketch', cursive;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -125,7 +125,7 @@ h2 {
 .countdown-fields input[type="number"] {
   width: 56px;
   text-align: center;
-  font-family: 'Cabin Sketch', cursive;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 28px;
   font-weight: 700;
   padding: 6px 4px;
@@ -137,7 +137,7 @@ h2 {
 .countdown-fields input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
 
 .cd-sep {
-  font-family: 'Cabin Sketch', cursive;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 28px;
   color: var(--muted);
   line-height: 1;
@@ -163,7 +163,7 @@ h2 {
 }
 
 .clock {
-  font-family: 'Cabin Sketch', cursive;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 120px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -422,7 +422,7 @@ input[type="text"]:focus, select:focus { border-color: var(--accent); }
   text-align: center;
 }
 .stat-val {
-  font-family: 'Cabin Sketch', cursive;
+  font-family: 'Inter', system-ui, sans-serif;
   font-size: 22px;
   font-weight: 700;
   color: var(--accent);
