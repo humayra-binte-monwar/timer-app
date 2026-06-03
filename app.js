@@ -492,12 +492,27 @@ const CHART_COLORS = [
   '#fabfd2','#e15759','#f17b79','#ff9d9a',
 ];
 
+// Stable tag → colour mapping, sorted by total duration descending so the
+// donut, its legend, and the stacked bars all colour each tag identically.
+function tagColorMap() {
+  const totals = {};
+  state.sessions.forEach(s => { totals[s.tagId] = (totals[s.tagId] || 0) + s.duration; });
+  const map = {};
+  Object.entries(totals)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([tagId], i) => { map[tagId] = CHART_COLORS[i % CHART_COLORS.length]; });
+  return map;
+}
+
+// Which calendar window the overview bar chart shows: 'week' | 'month' | 'year'
+let statsView = 'week';
+
 // ─── THEMES ──────────────────────────────────────────────────────────────────
 
 // Single dark theme, tuned to sit beneath the categorical chart palette above
 const THEME = {
-  bg:'#2A2218', surface:'#332A1E', border:'#463A28',
-  accent:'#C19A6B', text:'#D0CCC3', muted:'#8C867A', green:'#72b966',
+  bg:'#1B1B1D', surface:'#2A2A2E', border:'#3A3A3F',
+  accent:'#B8B8BE', text:'#E4E4E7', muted:'#8A8A90', green:'#72b966',
 };
 
 function cssVar(name) {
@@ -549,16 +564,17 @@ function drawDonut() {
   }
 
   const sorted = Object.entries(groups).sort((a, b) => b[1] - a[1]);
+  const colorMap = tagColorMap();
   const cx = CSS/2, cy = CSS/2, r = CSS*0.44, inner = r*0.58;
 
   let angle = -Math.PI/2;
-  sorted.forEach(([, secs], i) => {
+  sorted.forEach(([tagId, secs]) => {
     const slice = (secs / total) * 2 * Math.PI;
     ctx.beginPath();
     ctx.arc(cx, cy, r, angle, angle + slice);
     ctx.arc(cx, cy, inner, angle + slice, angle, true);
     ctx.closePath();
-    ctx.fillStyle = CHART_COLORS[i % CHART_COLORS.length];
+    ctx.fillStyle = colorMap[tagId];
     ctx.fill();
     angle += slice;
   });
@@ -572,20 +588,74 @@ function drawDonut() {
   ctx.fillStyle = cssVar('--muted');
   ctx.fillText('total', cx, cy + 9);
 
-  sorted.forEach(([tagId, secs], i) => {
+  sorted.forEach(([tagId, secs]) => {
     const id = parseInt(tagId);
     const path = getTag(id) ? tagPath(id) : `[deleted #${id}]`;
     const pct = Math.round((secs / total) * 100);
     const row = document.createElement('div');
     row.className = 'legend-row';
     row.innerHTML = `
-      <span class="legend-dot" style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></span>
+      <span class="legend-dot" style="background:${colorMap[tagId]}"></span>
       <span class="legend-label">${escHtml(path)}</span>
       <span class="legend-val">${fmt(secs)}</span>
       <span class="legend-pct">${pct}%</span>
     `;
     legend.appendChild(row);
   });
+}
+
+// Bucket sessions into the columns of the selected calendar view.
+// Each bucket = { label, byTag: { tagId: secs }, total }. `labelIdx` is the
+// set of bucket indices that get an x-axis label; `title` names the period.
+function addToBucket(bucket, s) {
+  bucket.byTag[s.tagId] = (bucket.byTag[s.tagId] || 0) + s.duration;
+  bucket.total += s.duration;
+}
+
+function statsBuckets(view) {
+  const now = new Date();
+  const buckets = [];
+  let labelIdx = [];
+  let title = '';
+
+  if (view === 'week') {
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - ((start.getDay() + 6) % 7)); // back to Monday
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    for (let i = 0; i < 7; i++) buckets.push({ label: names[i], byTag: {}, total: 0 });
+    state.sessions.forEach(s => {
+      const idx = Math.floor((new Date(s.date) - start) / 86400000);
+      if (idx >= 0 && idx < 7) addToBucket(buckets[idx], s);
+    });
+    labelIdx = [0, 1, 2, 3, 4, 5, 6];
+    title = 'This Week';
+
+  } else if (view === 'month') {
+    const year = now.getFullYear(), month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    for (let i = 0; i < daysInMonth; i++) buckets.push({ label: String(i + 1), byTag: {}, total: 0 });
+    state.sessions.forEach(s => {
+      const d = new Date(s.date);
+      if (d.getFullYear() === year && d.getMonth() === month) addToBucket(buckets[d.getDate() - 1], s);
+    });
+    for (let i = 0; i < daysInMonth; i += 7) labelIdx.push(i);
+    if (labelIdx[labelIdx.length - 1] !== daysInMonth - 1) labelIdx.push(daysInMonth - 1);
+    title = now.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  } else { // year
+    const year = now.getFullYear();
+    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    for (let i = 0; i < 12; i++) buckets.push({ label: names[i], byTag: {}, total: 0 });
+    state.sessions.forEach(s => {
+      const d = new Date(s.date);
+      if (d.getFullYear() === year) addToBucket(buckets[d.getMonth()], s);
+    });
+    labelIdx = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+    title = String(year);
+  }
+
+  return { buckets, labelIdx, title };
 }
 
 function drawBars() {
@@ -595,27 +665,18 @@ function drawBars() {
   const canvas = document.getElementById('bar-canvas');
   const ctx = setupCanvas(canvas, cssW, cssH);
 
-  const byDate = {};
-  state.sessions.forEach(s => {
-    const d = s.date.slice(0, 10);
-    byDate[d] = (byDate[d] || 0) + s.duration;
-  });
+  const colorMap = tagColorMap();
+  const { buckets, labelIdx, title } = statsBuckets(statsView);
 
-  const days = [];
-  const now = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    days.push({ key, val: byDate[key] || 0, date: d });
-  }
+  const titleEl = document.getElementById('bar-title');
+  if (titleEl) titleEl.textContent = title;
 
-  const rawMax = Math.max(...days.map(d => d.val), 3600);
+  const rawMax = Math.max(...buckets.map(b => b.total), 3600);
   const maxVal = Math.ceil(rawMax / 3600) * 3600; // snap up to next full hour
   const padL = 40, padR = 8, padT = 8, padB = 30;
   const chartW = cssW - padL - padR;
   const chartH = cssH - padT - padB;
-  const barW = chartW / days.length;
+  const barW = chartW / buckets.length;
 
   // Grid lines + Y labels
   const ySteps = [0.25, 0.5, 0.75, 1.0];
@@ -640,16 +701,22 @@ function drawBars() {
   });
   ctx.globalAlpha = 1;
 
-  // Bars
-  days.forEach((d, i) => {
-    if (d.val === 0) return;
-    const barH = (d.val / maxVal) * chartH;
+  // Stacked bars — one segment per tag, coloured to match the donut/legend
+  buckets.forEach((b, i) => {
+    if (b.total === 0) return;
     const x = padL + i * barW;
-    const y = padT + chartH - barH;
-    ctx.fillStyle = cssVar('--accent');
-    ctx.beginPath();
-    ctx.roundRect(x + 1, y, barW - 2, barH, [2, 2, 0, 0]);
-    ctx.fill();
+    const segs = Object.entries(b.byTag).sort((a, c) => c[1] - a[1]);
+    let yCursor = padT + chartH; // baseline; stack each segment upward
+    segs.forEach(([tagId, secs], j) => {
+      const segH = (secs / maxVal) * chartH;
+      const y = yCursor - segH;
+      ctx.fillStyle = colorMap[tagId] || cssVar('--accent');
+      ctx.beginPath();
+      if (j === segs.length - 1) ctx.roundRect(x + 1, y, barW - 2, segH, [2, 2, 0, 0]);
+      else ctx.rect(x + 1, y, barW - 2, segH);
+      ctx.fill();
+      yCursor = y;
+    });
   });
 
   // X axis baseline
@@ -660,16 +727,22 @@ function drawBars() {
   ctx.lineTo(padL + chartW, padT + chartH);
   ctx.stroke();
 
-  // X labels every 7 days
+  // X labels
   ctx.fillStyle = cssVar('--muted');
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.font = '9px Roboto, sans-serif';
-  [0, 7, 14, 21, 29].forEach(i => {
+  labelIdx.forEach(i => {
     const x = padL + i * barW + barW / 2;
-    const label = days[i].date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    ctx.fillText(label, x, padT + chartH + 5);
+    ctx.fillText(buckets[i].label, x, padT + chartH + 5);
   });
+}
+
+function setStatsView(view) {
+  statsView = view;
+  document.querySelectorAll('.view-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === view));
+  drawBars();
 }
 
 function renderStats() {
@@ -845,6 +918,8 @@ document.getElementById('btn-sync-disconnect').addEventListener('click', disconn
 
 document.getElementById('btn-stats').addEventListener('click', openStats);
 document.getElementById('btn-close-stats').addEventListener('click', closeStats);
+document.querySelectorAll('.view-btn').forEach(btn =>
+  btn.addEventListener('click', () => setStatsView(btn.dataset.view)));
 document.getElementById('stats-modal').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeStats();
 });

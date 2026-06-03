@@ -46,7 +46,7 @@ Tags are hierarchical with arbitrary depth, stored as a flat array with `{ id, n
 
 ### Layout
 
-CSS Grid: narrow sidebar (280px) on the left holds Save, Tags, and History panels; the timer occupies the remaining width and is vertically/horizontally centred. Responsive breakpoints:
+CSS Grid: narrow sidebar (280px) on the left holds Sync, Tags, and Stats panels; the timer occupies the remaining width and is vertically/horizontally centred. Responsive breakpoints:
 
 - `≥1300px` — wider sidebar, 148px clock
 - `900–1299px` — default desktop layout
@@ -56,12 +56,18 @@ CSS Grid: narrow sidebar (280px) on the left holds Save, Tags, and History panel
 
 ### Stats modal
 
-Opened via the "Stats" button in the History panel. Renders entirely on `<canvas>` elements (no library) inside a modal overlay:
+Opened via the "View Statistics" button in the Stats panel. Renders entirely on `<canvas>` elements (no library) inside a modal overlay:
 
 - **Donut chart** (`drawDonut`) — time by tag, with a legend showing path, formatted duration, and percentage
-- **Bar chart** (`drawBars`) — daily activity for the last 30 days, Y-axis snapped to whole hours, X-axis labelled every 7 days
+- **Stacked bar chart** (`drawBars`) — calendar activity with a Week / Month / Year toggle (`statsView` + `setStatsView`). `statsBuckets(view)` buckets sessions into the current calendar week (Mon-start, 7 bars), month (one bar per day), or year (12 monthly bars); each bar is stacked into per-tag segments. Y-axis snaps to whole hours.
+
+Tag colours are shared across both charts via `tagColorMap()`, which sorts tags by total duration descending and maps each to a `CHART_COLORS` entry — so a tag is the same colour in the donut, its legend, and every stacked bar segment.
 
 Both charts call `setupCanvas()` to handle device pixel ratio scaling. The modal closes on backdrop click or the × button.
+
+### Picture-in-Picture
+
+`openPip()` opens a floating always-on-top window with the clock and Start/Pause/Stop controls. It prefers the **Document PiP API** (`window.documentPictureInPicture.requestWindow`), which stays above all OS windows but requires an `http(s)://` origin — hence `start.bat`. On `file://` or unsupported browsers it falls back to a plain `window.open()` popup (not always-on-top). The PiP document is built with `document.write()`, re-using the main `style.css` and Google Fonts links; `syncThemeToPip()` copies the `THEME` CSS variables into it. `renderPip()` mirrors the main clock text/overtime class and button states into the PiP window on every tick (`tickClock` → `renderClock` + `renderPip`). The single `_pip` reference is nulled on `pagehide`/`beforeunload`. Clicking **Start** in the main UI auto-opens PiP.
 
 ### Startup data priority
 

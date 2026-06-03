@@ -104,7 +104,14 @@
           </div>
         </div>
         <div class="chart-block">
-          <div class="chart-title">Daily Activity — last 30 days</div>
+          <div class="bar-header">
+            <div class="chart-title" id="bar-title">This Week</div>
+            <div class="view-toggle">
+              <button class="view-btn active" data-view="week">Week</button>
+              <button class="view-btn" data-view="month">Month</button>
+              <button class="view-btn" data-view="year">Year</button>
+            </div>
+          </div>
           <div id="bar-canvas-wrap" class="bar-canvas-wrap">
             <canvas id="bar-canvas"></canvas>
           </div>

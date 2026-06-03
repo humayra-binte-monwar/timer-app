@@ -1,12 +1,12 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:       #2A2218;
-  --surface:  #332A1E;
-  --border:   #463A28;
-  --accent:   #C19A6B;
-  --text:     #D0CCC3;
-  --muted:    #8C867A;
+  --bg:       #1B1B1D;
+  --surface:  #2A2A2E;
+  --border:   #3A3A3F;
+  --accent:   #B8B8BE;
+  --text:     #E4E4E7;
+  --muted:    #8A8A90;
   --green:    #72b966;
 }
 
@@ -498,6 +498,40 @@ input[type="text"]:focus, select:focus { border-color: var(--accent); }
 
 /* ── BAR CHART ── */
 .bar-canvas-wrap { width: 100%; }
+
+.bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.view-toggle {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.view-btn {
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  background: transparent;
+  color: var(--muted);
+  font-family: 'Roboto', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.view-btn.active {
+  background: var(--accent);
+  color: var(--bg);
+}
 
 /* ── PiP WINDOW ── */
 .pip-wrap {
