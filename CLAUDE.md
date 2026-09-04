@@ -2,11 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Running the app
+## Deployment — this is a live website
+
+The app is hosted on **GitHub Pages** at
+<https://humayra-binte-monwar.github.io/timer-app/>, served straight from the root
+of `master` in the public repo `humayra-binte-monwar/timer-app`. **Pushing to
+`master` is the deploy step** — Pages rebuilds within about a minute and every
+device picks the change up on its next load (a hard refresh, `Ctrl+Shift+R`,
+bypasses the browser cache).
+
+This is how the app is actually used: opened by URL on several machines, which all
+share one Gist. Never tell the user to `git pull`, copy files between computers, or
+run anything per-device — there is exactly one copy of the code and it lives here.
+Because Pages serves over `https://`, the Document Picture-in-Picture API works on
+the live site.
+
+## Running the app locally
+
+For development only — the URL above is the real entry point.
 
 **Preferred:** Double-click `start.bat` — starts a local server via `npx serve` and opens `http://localhost:5000` automatically. Required for the Picture-in-Picture feature (Document PiP API is blocked on `file://` URLs).
 
 **Simple:** Open `index.html` directly in a browser — works for everything except PiP always-on-top.
+
+There is no build, no bundler, no test runner, and no dependency install.
 
 ## Architecture
 
@@ -20,8 +39,51 @@ Single-page app using vanilla JS, CSS, and HTML. No framework, no bundler.
 
 Persistent data (tags, sessions) uses **two layers in parallel**:
 
-1. `localStorage` — synchronous, written immediately on every `save()` call; also acts as fallback when Gist sync is not configured
+1. `localStorage` — synchronous, written immediately on every `save()` call (`save()` = `saveLocal()` + `scheduleGistWrite()`; use `saveLocal()` alone to persist without triggering a sync); also acts as fallback when Gist sync is not configured
 2. **GitHub Gist** — written via the GitHub API, debounced 1500ms via `scheduleGistWrite()` → `gistWrite()`; requires a GitHub token with `gist` scope stored in `localStorage` as `syncToken`, plus a Gist ID stored as `syncGistId`
+
+### Multi-device merge — do not reintroduce last-write-wins
+
+A Gist PATCH replaces the whole file, so writing local state directly would erase
+whatever another device had recorded. Four rules keep that from happening, and
+changes to the sync path must preserve all four:
+
+- **Read before every write.** `gistWrite()` re-fetches the Gist and folds it into
+  local state via `mergeSnapshots()` *before* it PATCHes.
+- **Merges are unions keyed by record id.** Safe because sessions are append-only
+  and `deleteTag()` refuses any tag that still has sessions or children. Deleted
+  tags are recorded as tombstones in `state.deletedTagIds` so a union cannot
+  resurrect them — which is why tags must stay keyed on `id` alone. Sessions key on
+  `id + '|' + date`, so sessions written by older builds (which numbered them with
+  a per-device counter, letting two machines both mint a session `7`) do not
+  collapse into one another.
+- **Never publish unverified state.** `_remoteReady` gates all writes and is set
+  only once a read has succeeded. A failed startup fetch leaves the gate shut and
+  shows the `stale` status; local data stays intact on disk and is merged up on the
+  next successful pull.
+- **Refresh long-lived tabs.** A `visibilitychange` handler re-pulls when the tab
+  has been in the background for more than 30s, and flushes pending writes when it
+  is hidden or unloaded. Without it a tab left open for days serves stale state.
+
+New records get collision-proof ids from `newId()` (`crypto.randomUUID`). Ids
+created by older builds are numbers and are deliberately **left as they are** —
+both devices got them from the same Gist, so they already agree. Because ids are
+now a mix of numbers and uuid strings, resolve any id arriving from the DOM or
+from `Object.keys()` through `tagIdFromKey()` rather than `parseInt()`.
+
+`backupLocal()` snapshots localStorage before the first sync of each session under
+a `backup:<ISO>` key, keeping the three most recent.
+
+### Recovering data lost to older builds
+
+`restoreFromHistory()`, wired to the "Restore from history" button in the Sync
+panel, repairs damage done before the merge fix existed. It walks every revision
+returned by `GET /gists/{id}/commits` (newest 100), unions every session those
+revisions ever held, and reports what is missing from the current data before
+asking to restore it. Only tags that recovered sessions actually reference are
+brought back, and any of those are dropped from `deletedTagIds` so the next merge
+does not strip them out again. The scan is read-only until the user confirms, and
+running it twice is a no-op.
 
 Sync credentials are read from `sessionStorage` first, then `localStorage` as fallback — this allows temporary sessions without persisting the token to disk. `saveSyncCredentials()` writes to both; `clearSyncCredentials()` removes from both.
 
@@ -73,7 +135,7 @@ Both charts call `setupCanvas()` to handle device pixel ratio scaling. The modal
 
 ### Startup data priority
 
-On init, if `syncToken` and `syncGistId` are set in `localStorage`, the Gist is fetched and its data overwrites what was loaded from `localStorage` — the Gist is treated as the source of truth. `localStorage` is the fallback when sync is not configured.
+On init, if `syncToken` and `syncGistId` are set in `localStorage`, `pullRemote()` fetches the Gist and **merges** it with what was loaded from `localStorage` — neither side is the source of truth, because work recorded on this device while it was offline has to survive too. `pullRemote()` returns whether local holds records the Gist lacks, and only then is a write scheduled, so an ordinary startup costs one GET rather than a GET plus a pointless PATCH. `localStorage` is the fallback when sync is not configured.
 
 ### Themes
 

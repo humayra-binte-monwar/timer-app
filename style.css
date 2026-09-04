@@ -242,7 +242,8 @@ input[type="text"]:focus, select:focus { border-color: var(--accent); }
   border-radius: 3px;
 }
 #sync-setup { display: flex; flex-direction: column; gap: 6px; }
-#sync-connected { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#sync-connected { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.sync-actions { display: flex; gap: 6px; }
 .sync-status { font-size: 11px; }
 .sync-status.syncing { color: var(--muted); }
 .sync-status.saved   { color: var(--green); }

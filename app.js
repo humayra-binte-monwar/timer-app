@@ -12,6 +12,7 @@ function saveSyncCredentials(token, gistId) {
 
 function clearSyncCredentials() {
   ['syncToken','syncGistId'].forEach(k => { localStorage.removeItem(k); sessionStorage.removeItem(k); });
+  _remoteReady = false;
 }
 
 async function gistRequest(method, path, body) {
@@ -35,13 +36,73 @@ async function gistRequest(method, path, body) {
   }
 }
 
+let _gistTimer   = null;
+let _writing     = false;
+let _remoteReady = false;  // a read has succeeded — safe to publish local state
+let _lastPull    = 0;
+let _dirty       = false;  // local edits not yet accepted by the gist
+
 function syncPayload() {
   return {
     tags:          state.tags,
     sessions:      state.sessions,
+    deletedTagIds: state.deletedTagIds,
     nextTagId:     state.nextTagId,
     nextSessionId: state.nextSessionId,
   };
+}
+
+// Union two snapshots by record id.
+//
+// Sessions are only ever appended, and deleteTag refuses any tag that still has
+// sessions or children, so a union can never drop a real record. Deleted tags
+// are carried as tombstones in `deletedTagIds` so the union does not resurrect
+// them. This replaces the old whole-file overwrite, where whichever device
+// happened to save last silently erased everything the other one recorded.
+function mergeSnapshots(remote, local) {
+  if (!remote) return local;
+
+  const byKey = (arr, key) => {
+    const m = new Map();
+    (arr || []).forEach(r => { if (r && r.id != null) m.set(key(r), r); });
+    return m;
+  };
+
+  const tagKey = t => String(t.id);
+  // Sessions also key on their timestamp. New ids are uuids, but sessions
+  // written by the old code carry a per-device counter, so two devices could
+  // each hold a different session numbered 7. Folding the date in keeps both
+  // instead of silently dropping one — and records that really are the same
+  // still collapse, since both devices got them from the same gist.
+  const sessionKey = s => String(s.id) + '|' + (s.date || '');
+
+  const tombstones = new Set(
+    [...(remote.deletedTagIds || []), ...(local.deletedTagIds || [])].map(String)
+  );
+
+  const tags = byKey(remote.tags, tagKey);
+  byKey(local.tags, tagKey).forEach((t, k) => tags.set(k, t));
+  tombstones.forEach(id => tags.delete(id));
+
+  const sessions = byKey(remote.sessions, sessionKey);
+  byKey(local.sessions, sessionKey).forEach((s, k) => sessions.set(k, s));
+
+  return {
+    tags:          [...tags.values()],
+    sessions:      [...sessions.values()],
+    deletedTagIds: [...tombstones],
+    nextTagId:     Math.max(remote.nextTagId     || 1, local.nextTagId     || 1),
+    nextSessionId: Math.max(remote.nextSessionId || 1, local.nextSessionId || 1),
+  };
+}
+
+function applySnapshot(data) {
+  if (!data) return;
+  state.tags          = data.tags          ?? state.tags;
+  state.sessions      = data.sessions      ?? state.sessions;
+  state.deletedTagIds = data.deletedTagIds ?? state.deletedTagIds;
+  state.nextTagId     = data.nextTagId     ?? state.nextTagId;
+  state.nextSessionId = data.nextSessionId ?? state.nextSessionId;
 }
 
 async function gistLoad() {
@@ -50,22 +111,76 @@ async function gistLoad() {
   return raw ? JSON.parse(raw) : null;
 }
 
-let _gistTimer = null;
+// Pull the gist and fold it into local state. Opens the write gate: until a
+// read has succeeded at least once this session, this device must not PATCH —
+// otherwise one failed request at startup republishes stale local data as truth.
+// Returns true when this device holds records the gist does not, i.e. we owe it
+// a write — so an ordinary startup with nothing new costs one GET, not a GET
+// plus a pointless PATCH.
+async function pullRemote() {
+  const remote = await gistLoad();
+  const merged = mergeSnapshots(remote, syncPayload());
+  const localAhead = !remote
+    || merged.sessions.length      !== (remote.sessions      || []).length
+    || merged.tags.length          !== (remote.tags          || []).length
+    || merged.deletedTagIds.length !== (remote.deletedTagIds || []).length;
+
+  applySnapshot(merged);
+  _remoteReady = true;
+  _lastPull = Date.now();
+  saveLocal();
+  return localAhead;
+}
+
 function scheduleGistWrite() {
   if (!syncToken()) return;
+  _dirty = true;
   clearTimeout(_gistTimer);
   _gistTimer = setTimeout(gistWrite, 1500);
 }
 
+// Push now instead of waiting out the debounce — used when the tab is being
+// hidden or torn down, where the remaining 1.5s may never arrive.
+function flushGistWrite() {
+  if (_dirty && _remoteReady) gistWrite();
+}
+
 async function gistWrite() {
   if (!syncToken() || !syncGistId()) return;
+  clearTimeout(_gistTimer);
+  if (!_remoteReady) { setSyncStatus('stale'); return; }
+  if (_writing) { scheduleGistWrite(); return; }
+
+  _writing = true;
   setSyncStatus('syncing');
   try {
+    // Re-read immediately before writing: the PATCH replaces the whole file, so
+    // anything another device added since our last pull has to be folded in here
+    // or it would be lost.
+    applySnapshot(mergeSnapshots(await gistLoad(), syncPayload()));
     await gistRequest('PATCH', '/' + syncGistId(), {
       files: { [GIST_FILE]: { content: JSON.stringify(syncPayload(), null, 2) } },
     });
+    _lastPull = Date.now();
+    _dirty = false;
+    saveLocal();
+    renderAll();
     setSyncStatus('saved');
-  } catch { setSyncStatus('error'); }
+  } catch {
+    setSyncStatus('error');
+  } finally {
+    _writing = false;
+  }
+}
+
+// Snapshot what is on disk before this session's first sync, so a bad merge or a
+// bad remote can be rolled back by hand. Keeps the three most recent.
+function backupLocal() {
+  try {
+    localStorage.setItem('backup:' + new Date().toISOString(), JSON.stringify(syncPayload()));
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('backup:')).sort();
+    while (keys.length > 3) localStorage.removeItem(keys.shift());
+  } catch { /* quota — a missing backup must not block sync */ }
 }
 
 // Connect: finds an existing timer-data gist or creates a new one.
@@ -89,15 +204,12 @@ async function connectSync() {
     }
     if (gistId) {
       saveSyncCredentials(undefined, gistId);
-      const data = await gistLoad();
-      if (data) {
-        state.tags          = data.tags          ?? state.tags;
-        state.sessions      = data.sessions      ?? state.sessions;
-        state.nextTagId     = data.nextTagId     ?? state.nextTagId;
-        state.nextSessionId = data.nextSessionId ?? state.nextSessionId;
-        save();
-        renderAll();
-      }
+      backupLocal();
+      // Merge rather than replace: local data created before connecting must
+      // survive linking this device to an existing gist.
+      await pullRemote();
+      renderAll();
+      scheduleGistWrite();
     } else {
       const gist = await gistRequest('POST', '', {
         description: 'Timer App Data',
@@ -105,6 +217,7 @@ async function connectSync() {
         files: { [GIST_FILE]: { content: JSON.stringify(syncPayload(), null, 2) } },
       });
       saveSyncCredentials(undefined, gist.id);
+      _remoteReady = true;  // we authored the file, so it is ours to write
     }
     renderSyncUI();
     setSyncStatus('saved');
@@ -125,6 +238,78 @@ function disconnectSync() {
   renderSyncUI();
 }
 
+// Walk every revision of the gist and union back any session that has ever been
+// recorded. Builds before the merge fix replaced the whole file on each write, so
+// a device holding a stale copy could erase sessions logged on another machine —
+// but every one of those overwrites is still in the gist's revision history.
+async function restoreFromHistory() {
+  if (!syncToken() || !syncGistId()) return;
+
+  const btn = document.getElementById('btn-sync-restore');
+  const out = document.getElementById('sync-restore-result');
+  const show = msg => { out.hidden = false; out.textContent = msg; };
+  const key = s => String(s.id) + '|' + (s.date || '');
+
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  try {
+    const commits = await gistRequest('GET', '/' + syncGistId() + '/commits?per_page=100');
+
+    // Seed with what we already hold, so the diff reports genuine recoveries only.
+    const sessions = new Map(state.sessions.map(s => [key(s), s]));
+    const known    = new Set(sessions.keys());
+    const tags     = new Map(state.tags.map(t => [String(t.id), t]));
+
+    for (let i = 0; i < commits.length; i++) {
+      show(`Scanning revision ${i + 1} of ${commits.length}…`);
+      let data;
+      try {
+        const rev = await gistRequest('GET', '/' + syncGistId() + '/' + commits[i].version);
+        const raw = rev.files?.[GIST_FILE]?.content;
+        data = raw ? JSON.parse(raw) : null;
+      } catch { continue; }  // one unreadable revision must not abort the scan
+      if (!data) continue;
+      (data.sessions || []).forEach(s => { if (s && s.id != null) sessions.set(key(s), s); });
+      (data.tags     || []).forEach(t => { if (t && t.id != null) tags.set(String(t.id), t); });
+    }
+
+    const recovered = [...sessions.entries()].filter(([k]) => !known.has(k)).map(([, s]) => s);
+    if (recovered.length === 0) {
+      show(`Scanned ${commits.length} revision(s) — nothing was missing.`);
+      return;
+    }
+
+    // Bring back only the tags those sessions point at. Tags deleted on purpose
+    // hold nothing and should stay deleted.
+    const needed = new Set(recovered.map(s => String(s.tagId)));
+    const restoredTags = [...tags.values()].filter(t =>
+      needed.has(String(t.id)) && !state.tags.some(x => String(x.id) === String(t.id))
+    );
+
+    const hours = recovered.reduce((a, s) => a + (s.duration || 0), 0) / 3600;
+    const ok = confirm(
+      `Found ${recovered.length} session(s) totalling ${hours.toFixed(1)} hours ` +
+      `missing from your current data.\n\nRestore them?`
+    );
+    if (!ok) { show(`${recovered.length} recoverable session(s) found — not restored.`); return; }
+
+    state.sessions = [...sessions.values()];
+    state.tags     = [...state.tags, ...restoredTags];
+    // A restored tag must not be stripped straight back out by the next merge.
+    const back = new Set(restoredTags.map(t => String(t.id)));
+    state.deletedTagIds = (state.deletedTagIds || []).filter(id => !back.has(String(id)));
+
+    save();
+    renderAll();
+    show(`Restored ${recovered.length} session(s) — ${hours.toFixed(1)} hours.`);
+  } catch (e) {
+    show('Restore failed: ' + (e.name === 'AbortError' ? 'request timed out' : e.message));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Restore from history';
+  }
+}
+
 function setSyncStatus(s) {
   const el = document.getElementById('sync-status');
   if (!el) return;
@@ -132,6 +317,7 @@ function setSyncStatus(s) {
     syncing: ['↻ Syncing…',   'syncing'],
     saved:   ['✓ Synced',     'saved'],
     error:   ['⚠ Sync error', 'error'],
+    stale:   ['⚠ Not synced — offline', 'error'],
     off:     ['',             ''],
   };
   const [text, cls] = map[s] || map.off;
@@ -163,6 +349,7 @@ const _savedTimer = load('timer', {});
 const state = {
   tags:     load('tags',     []),
   sessions: load('sessions', []),
+  deletedTagIds: load('deletedTagIds', []),
   nextTagId:     load('nextTagId',     1),
   nextSessionId: load('nextSessionId', 1),
   timer: {
@@ -182,12 +369,34 @@ function load(key, fallback) {
   catch { return fallback; }
 }
 
-function save() {
+function saveLocal() {
   localStorage.setItem('tags',          JSON.stringify(state.tags));
   localStorage.setItem('sessions',      JSON.stringify(state.sessions));
+  localStorage.setItem('deletedTagIds', JSON.stringify(state.deletedTagIds));
   localStorage.setItem('nextTagId',     state.nextTagId);
   localStorage.setItem('nextSessionId', state.nextSessionId);
+}
+
+function save() {
+  saveLocal();
   scheduleGistWrite();
+}
+
+// Ids must be unique across devices, or two machines both minting "7" would
+// collide the moment their records are merged. Existing numeric ids are left
+// exactly as they are — they came from the shared gist, so both devices already
+// agree on them, and rewriting them is a needless risk to old data.
+function newId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
+// Ids are legacy numbers or new uuid strings, but DOM values and object keys are
+// always strings — resolve one back to the value actually stored on the record.
+function tagIdFromKey(raw) {
+  if (raw == null || raw === '') return null;
+  const t = state.tags.find(t => String(t.id) === String(raw));
+  return t ? t.id : raw;
 }
 
 function saveTimer() {
@@ -239,7 +448,7 @@ function addTag(name, parentId) {
     t.parentId === (parentId || null)
   );
   if (dup) { alert('A tag with that name already exists under the same parent.'); return false; }
-  state.tags.push({ id: state.nextTagId++, name: name.trim(), parentId: parentId || null });
+  state.tags.push({ id: newId(), name: name.trim(), parentId: parentId || null });
   save();
   return true;
 }
@@ -252,6 +461,7 @@ function deleteTag(id) {
     alert('Sessions exist for this tag.'); return;
   }
   state.tags = state.tags.filter(t => t.id !== id);
+  state.deletedTagIds.push(String(id));  // tombstone, so a merge cannot resurrect it
   if (state.timer.tagId === id) { stopTimer(false); state.timer.tagId = null; }
   save();
   renderAll();
@@ -290,7 +500,7 @@ function stopTimer(save_ = true) {
   const ms = currentMs();
   if (save_ && ms >= 1000 && state.timer.tagId != null) {
     state.sessions.push({
-      id:       state.nextSessionId++,
+      id:       newId(),
       tagId:    state.timer.tagId,
       date:     new Date().toISOString(),
       duration: Math.floor(ms / 1000),
@@ -444,7 +654,7 @@ function renderHistory() {
   });
   container.innerHTML = '';
   sorted.forEach(([tagId, sessions]) => {
-    const id = parseInt(tagId);
+    const id = tagIdFromKey(tagId);
     const total = sessions.reduce((acc, s) => acc + s.duration, 0);
     const path = getTag(id) ? tagPath(id) : `[deleted tag #${id}]`;
 
@@ -589,7 +799,7 @@ function drawDonut() {
   ctx.fillText('total', cx, cy + 9);
 
   sorted.forEach(([tagId, secs]) => {
-    const id = parseInt(tagId);
+    const id = tagIdFromKey(tagId);
     const path = getTag(id) ? tagPath(id) : `[deleted #${id}]`;
     const pct = Math.round((secs / total) * 100);
     const row = document.createElement('div');
@@ -799,7 +1009,8 @@ function drawTagGrids() {
   tagIds.forEach(id => {
     const color = colorMap[id];
     const [r, g, b] = hexToRgb(color);
-    const path = getTag(parseInt(id)) ? tagPath(parseInt(id)) : `[deleted #${id}]`;
+    const tid  = tagIdFromKey(id);
+    const path = getTag(tid) ? tagPath(tid) : `[deleted #${id}]`;
     const days = perTag[id] || {};
 
     const block = document.createElement('div');
@@ -988,13 +1199,13 @@ document.getElementById('btn-pause').addEventListener('click', pauseTimer);
 document.getElementById('btn-stop').addEventListener('click', () => stopTimer(true));
 
 document.getElementById('tag-select').addEventListener('change', e => {
-  state.timer.tagId = parseInt(e.target.value) || null;
+  state.timer.tagId = tagIdFromKey(e.target.value);
   saveTimer();
 });
 
 document.getElementById('btn-add-tag').addEventListener('click', () => {
   const name     = document.getElementById('tag-name').value;
-  const parentId = parseInt(document.getElementById('tag-parent').value) || null;
+  const parentId = tagIdFromKey(document.getElementById('tag-parent').value);
   if (addTag(name, parentId)) {
     document.getElementById('tag-name').value = '';
     renderAll();
@@ -1007,6 +1218,7 @@ document.getElementById('tag-name').addEventListener('keydown', e => {
 
 document.getElementById('btn-sync-connect').addEventListener('click', connectSync);
 document.getElementById('btn-sync-disconnect').addEventListener('click', disconnectSync);
+document.getElementById('btn-sync-restore').addEventListener('click', restoreFromHistory);
 
 document.getElementById('btn-stats').addEventListener('click', openStats);
 document.getElementById('btn-close-stats').addEventListener('click', closeStats);
@@ -1022,20 +1234,20 @@ document.getElementById('stats-modal').addEventListener('click', e => {
   // Apply the dark theme
   applyTheme(THEME);
 
-  // Load from Gist if already connected — it's the source of truth
+  // Merge the Gist into local state — not "the Gist wins". Anything recorded on
+  // this device while it was offline has to survive, so both sides are unioned.
   if (syncToken() && syncGistId()) {
     setSyncStatus('syncing');
     try {
-      const data = await gistLoad();
-      if (data) {
-        state.tags          = data.tags          ?? state.tags;
-        state.sessions      = data.sessions      ?? state.sessions;
-        state.nextTagId     = data.nextTagId     ?? state.nextTagId;
-        state.nextSessionId = data.nextSessionId ?? state.nextSessionId;
-        save();
-      }
+      backupLocal();
+      if (await pullRemote()) scheduleGistWrite();  // publish offline work
       setSyncStatus('saved');
-    } catch { setSyncStatus('error'); }
+    } catch {
+      // The write gate stays shut. Local data is intact on disk and will be
+      // merged up on the next successful pull; publishing it now would overwrite
+      // newer data from another device with this device's stale copy.
+      setSyncStatus('stale');
+    }
   }
 
   renderAll();
@@ -1065,4 +1277,24 @@ document.getElementById('stats-modal').addEventListener('click', e => {
 
   // Heartbeat every 5s
   setInterval(() => { if (state.timer.running) saveTimer(); }, 5000);
+
+  // A tab left open for days would otherwise keep serving state from the day it
+  // was opened, then publish that over newer work from another device. Re-pull
+  // whenever it comes back to the foreground, and flush pending writes when it
+  // goes away rather than betting on the 1.5s debounce completing.
+  document.addEventListener('visibilitychange', () => {
+    if (!syncToken() || !syncGistId()) return;
+    if (document.visibilityState !== 'visible') { flushGistWrite(); return; }
+    if (Date.now() - _lastPull < 30000) return;
+    setSyncStatus('syncing');
+    pullRemote()
+      .then(ahead => {
+        renderAll();
+        setSyncStatus('saved');
+        if (ahead) scheduleGistWrite(); else flushGistWrite();
+      })
+      .catch(() => setSyncStatus('stale'));
+  });
+
+  window.addEventListener('pagehide', flushGistWrite);
 })();

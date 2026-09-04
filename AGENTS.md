@@ -63,7 +63,7 @@ Both charts call `setupCanvas()` to handle device pixel ratio scaling. The modal
 
 ### Startup data priority
 
-On init, if `syncToken` and `syncGistId` are set in `localStorage`, the Gist is fetched and its data overwrites what was loaded from `localStorage` — the Gist is treated as the source of truth. `localStorage` is the fallback when sync is not configured.
+On init, if `syncToken` and `syncGistId` are set in `localStorage`, the Gist is fetched and **merged** with what was loaded from `localStorage` — neither side wins outright, so work recorded offline on this device survives. Every write re-reads the Gist and unions it before PATCHing, since a PATCH replaces the whole file. See the multi-device merge rules in `CLAUDE.md` before changing anything in the sync path. `localStorage` is the fallback when sync is not configured.
 
 ### Themes
 
