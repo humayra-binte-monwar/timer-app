@@ -253,12 +253,25 @@ async function restoreFromHistory() {
   btn.disabled = true;
   btn.textContent = 'Scanning…';
   try {
-    const commits = await gistRequest('GET', '/' + syncGistId() + '/commits?per_page=100');
+    // The API pages revisions at 100 a time, and a gist written on every save
+    // builds up history fast — the overwrite being hunted for is very often
+    // older than the first page, so walk the whole history, not just page one.
+    const commits = [];
+    for (let page = 1; page <= 30; page++) {
+      show(`Listing revisions… ${commits.length}`);
+      const batch = await gistRequest('GET', `/${syncGistId()}/commits?per_page=100&page=${page}`);
+      commits.push(...batch);
+      if (batch.length < 100) break;
+    }
+    if (commits.length === 0) { show('This gist has no revision history to scan.'); return; }
 
     // Seed with what we already hold, so the diff reports genuine recoveries only.
     const sessions = new Map(state.sessions.map(s => [key(s), s]));
     const known    = new Set(sessions.keys());
     const tags     = new Map(state.tags.map(t => [String(t.id), t]));
+
+    let peak = state.sessions.length;  // most sessions any single revision held
+    let read = 0;
 
     for (let i = 0; i < commits.length; i++) {
       show(`Scanning revision ${i + 1} of ${commits.length}…`);
@@ -269,13 +282,27 @@ async function restoreFromHistory() {
         data = raw ? JSON.parse(raw) : null;
       } catch { continue; }  // one unreadable revision must not abort the scan
       if (!data) continue;
+      read++;
+      peak = Math.max(peak, (data.sessions || []).length);
       (data.sessions || []).forEach(s => { if (s && s.id != null) sessions.set(key(s), s); });
       (data.tags     || []).forEach(t => { if (t && t.id != null) tags.set(String(t.id), t); });
     }
 
+    const oldest = commits[commits.length - 1]?.committed_at;
+    const backTo = oldest ? ' back to ' + new Date(oldest).toLocaleDateString() : '';
+
     const recovered = [...sessions.entries()].filter(([k]) => !known.has(k)).map(([, s]) => s);
     if (recovered.length === 0) {
-      show(`Scanned ${commits.length} revision(s) — nothing was missing.`);
+      // Report enough to tell the two causes apart: if no revision ever held more
+      // sessions than we have now, the missing time never reached the Gist at all
+      // and is still sitting in the other device's browser.
+      show(
+        `Scanned ${read} of ${commits.length} revision(s)${backTo}. ` +
+        `Most sessions in any revision: ${peak}; you have ${state.sessions.length}. ` +
+        (peak <= state.sessions.length
+          ? 'The Gist never held more than this, so the missing time was never uploaded — open the app on the other laptop to sync it up.'
+          : 'Nothing recoverable was found.')
+      );
       return;
     }
 
